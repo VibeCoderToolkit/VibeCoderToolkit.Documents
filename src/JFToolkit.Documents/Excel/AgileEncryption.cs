@@ -65,26 +65,26 @@ internal static class AgileEncryption
         var hashKey = DeriveBlockKey(passwordHash, VerifierHashValueBlockKey);
         var keyValueKey = DeriveBlockKey(passwordHash, EncryptedKeyValueBlockKey);
 
-        // Generate random verifier (16 bytes), pad to block, encrypt (NO PKCS7)
+        // Generate random verifier (16 bytes), pad to block, encrypt
         var verifier = RandomBytes(SaltSize);
         var paddedVerifier = PadToBlockSize(verifier, BlockSize);
         var encryptedVerifier = AesCbcEncryptNoPadding(paddedVerifier, verifierKey, passwordSalt);
 
-        // Hash the ORIGINAL verifier (not padded), pad, encrypt (NO PKCS7)
+        // Hash the ORIGINAL verifier (not padded), pad, encrypt (no PKCS7 — ECMA-376 values are block-aligned)
         var verifierHash = SHA512.HashData(verifier);
         var paddedHash = PadToBlockSize(verifierHash, BlockSize);
         var encryptedVerifierHash = AesCbcEncryptNoPadding(paddedHash, hashKey, passwordSalt);
 
-        // Generate random data key (16 bytes of entropy), pad with 0x36 to KeyBytes, encrypt (NO PKCS7)
+        // Generate random data key (16 bytes of entropy), pad with 0x36 to KeyBytes (no PKCS7)
         var dataKeyEntropy = RandomBytes(SaltSize);
         var paddedKey = PadWith0x36(dataKeyEntropy);
         var encryptedKeyValue = AesCbcEncryptNoPadding(paddedKey, keyValueKey, passwordSalt);
 
-        // Encrypt the inner ZIP using keyDataSalt for IV derivation (PKCS7 padding for last segment)
+        // Encrypt the inner ZIP using keyDataSalt for IV derivation (PKCS7 for last segment)
         var encryptedPackage = EncryptPackage(innerZip, paddedKey, keyDataSalt);
 
-        // Compute HMAC for integrity (matching msoffcrypto implementation)
-        var hmacSalt = RandomBytes(HashSize); // 64 bytes of random
+        // Compute HMAC for integrity — encrypt with secret_key + block-key IV, no PKCS7
+        var hmacSalt = RandomBytes(HashSize);
         var hmacIv1 = DeriveIv(keyDataSalt, HmacKeyBlock);
         var hmacIv2 = DeriveIv(keyDataSalt, HmacValueBlock);
         var encryptedHmacKey = AesCbcEncryptNoPadding(PadToBlockSize(hmacSalt, BlockSize), paddedKey, hmacIv1);
@@ -322,7 +322,7 @@ internal static class AgileEncryption
             var verifierKey = DeriveBlockKey(passwordHash, VerifierHashInputBlockKey);
             var hashKey = DeriveBlockKey(passwordHash, VerifierHashValueBlockKey);
 
-            // Verify password: decrypt verifier, hash it, compare with decrypted hash (NO PKCS7)
+            // Verify password: decrypt verifier, hash it, compare with decrypted hash
             var decryptedVerifier = AesCbcDecryptNoPadding(info.EncryptedVerifierHashInput, verifierKey, info.PasswordSalt);
             var expectedHash = SHA512.HashData(decryptedVerifier);
             var actualHash = AesCbcDecryptNoPadding(info.EncryptedVerifierHashValue, hashKey, info.PasswordSalt);
