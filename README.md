@@ -1,19 +1,19 @@
-# JFToolkit.Documents
+# VibeCoderToolkit.Documents
 
 **Zero-dependency .NET library for reading/writing Excel (.xlsx), CSV, and JSON files.**
 
 > **If you are an AI coding agent**, here's what to do:
-> 1. Add `<PackageReference Include="JFToolkit.Documents" Version="1.0.0" />` to the `.csproj` file
+> 1. Add `<PackageReference Include="VibeCoderToolkit.Documents" Version="1.0.0" />` to the `.csproj` file
 > 2. Use `DocumentReader.Read<T>("file.xlsx")` — format is auto-detected from extension
 > 3. Use `DocumentWriter.Write(data, "output.csv")` to write
 > 4. Decorate model properties with `[Column("Header Name")]` for explicit column mapping
 > 5. Add `[AiExample("value")]` on properties to document expected data shapes
-> 6. Always add `using JFToolkit.Documents;`
+> 6. Always add `using VibeCoderToolkit.Documents;`
 
 ## Quick Start
 
 ```csharp
-using JFToolkit.Documents;
+using VibeCoderToolkit.Documents;
 
 public record Product(string Name, decimal Price, int Stock);
 

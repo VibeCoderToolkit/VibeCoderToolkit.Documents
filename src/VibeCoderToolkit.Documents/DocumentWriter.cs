@@ -1,8 +1,8 @@
 using System.Reflection;
-using JFToolkit.Documents.Csv;
-using JFToolkit.Documents.Excel;
+using VibeCoderToolkit.Documents.Csv;
+using VibeCoderToolkit.Documents.Excel;
 
-namespace JFToolkit.Documents;
+namespace VibeCoderToolkit.Documents;
 
 /// <summary>
 /// Unified document writer — auto-detects format from file extension.

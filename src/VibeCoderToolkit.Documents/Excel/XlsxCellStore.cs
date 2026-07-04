@@ -1,7 +1,7 @@
 using System.IO.Compression;
 using System.Xml.Linq;
 
-namespace JFToolkit.Documents.Excel;
+namespace VibeCoderToolkit.Documents.Excel;
 
 /// <summary>
 /// Reads and writes cell values from an unencrypted .xlsx ZIP.

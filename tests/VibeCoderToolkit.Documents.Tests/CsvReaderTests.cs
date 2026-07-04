@@ -1,7 +1,7 @@
-using JFToolkit.Documents;
+using VibeCoderToolkit.Documents;
 using Xunit;
 
-namespace JFToolkit.Documents.Tests;
+namespace VibeCoderToolkit.Documents.Tests;
 
 public class CsvReaderTests
 {

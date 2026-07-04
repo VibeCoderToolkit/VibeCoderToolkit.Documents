@@ -5,9 +5,9 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <RootNamespace>JFToolkit.Documents</RootNamespace>
-    <AssemblyName>JFToolkit.Documents</AssemblyName>
-    <PackageId>JFToolkit.Documents</PackageId>
+    <RootNamespace>VibeCoderToolkit.Documents</RootNamespace>
+    <AssemblyName>VibeCoderToolkit.Documents</AssemblyName>
+    <PackageId>VibeCoderToolkit.Documents</PackageId>
     <Version>1.0.0</Version>
     <Authors>Harald Daltveit</Authors>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>

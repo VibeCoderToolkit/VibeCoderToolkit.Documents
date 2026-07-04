@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace JFToolkit.Documents.Excel;
+namespace VibeCoderToolkit.Documents.Excel;
 
 /// <summary>
 /// Minimal OLE2 Compound File Binary (CFB) reader/writer.

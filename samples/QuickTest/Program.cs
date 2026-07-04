@@ -1,5 +1,5 @@
-using JFToolkit.Documents;
-using JFToolkit.Documents.Excel;
+using VibeCoderToolkit.Documents;
+using VibeCoderToolkit.Documents.Excel;
 
 var testDir = Path.Combine(Path.GetTempPath(), "jftoolkit_verify");
 Directory.CreateDirectory(testDir);

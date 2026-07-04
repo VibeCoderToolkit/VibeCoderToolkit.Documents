@@ -1,4 +1,4 @@
-namespace JFToolkit.Documents;
+namespace VibeCoderToolkit.Documents;
 
 /// <summary>
 /// Marks a property with an example value to help AI coding agents

@@ -2,7 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Xml.Linq;
 
-namespace JFToolkit.Documents.Excel;
+namespace VibeCoderToolkit.Documents.Excel;
 
 /// <summary>
 /// ECMA-376 Agile Encryption (Part 4).

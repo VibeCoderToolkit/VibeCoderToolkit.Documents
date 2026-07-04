@@ -1,8 +1,8 @@
-using JFToolkit.Documents;
-using JFToolkit.Documents.Excel;
+using VibeCoderToolkit.Documents;
+using VibeCoderToolkit.Documents.Excel;
 using Xunit;
 
-namespace JFToolkit.Documents.Tests;
+namespace VibeCoderToolkit.Documents.Tests;
 
 public class EncryptedExcelTests
 {

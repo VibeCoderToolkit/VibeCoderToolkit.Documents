@@ -2,7 +2,7 @@ using System.Globalization;
 using System.Reflection;
 using System.Text;
 
-namespace JFToolkit.Documents.Csv;
+namespace VibeCoderToolkit.Documents.Csv;
 
 /// <summary>
 /// Reads CSV files and maps rows to model objects.

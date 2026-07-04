@@ -9,7 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\JFToolkit.Documents\JFToolkit.Documents.csproj" />
+    <ProjectReference Include="..\..\src\VibeCoderToolkit.Documents\VibeCoderToolkit.Documents.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,7 +1,7 @@
 using System.Reflection;
 using System.Text;
 
-namespace JFToolkit.Documents.Csv;
+namespace VibeCoderToolkit.Documents.Csv;
 
 /// <summary>
 /// Writes model objects to CSV files.

@@ -1,4 +1,4 @@
-namespace JFToolkit.Documents.Excel;
+namespace VibeCoderToolkit.Documents.Excel;
 
 /// <summary>
 /// Opens encrypted or unencrypted Excel files for programmatic modification,

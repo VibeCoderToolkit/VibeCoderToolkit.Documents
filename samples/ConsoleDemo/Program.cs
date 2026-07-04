@@ -1,4 +1,4 @@
-using JFToolkit.Documents;
+using VibeCoderToolkit.Documents;
 
 // ── Test model ──
 var sampleData = new List<Product>

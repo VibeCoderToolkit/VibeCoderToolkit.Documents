@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace JFToolkit.Documents.Json;
+namespace VibeCoderToolkit.Documents.Json;
 
 /// <summary>
 /// Writes model objects to JSON files.
