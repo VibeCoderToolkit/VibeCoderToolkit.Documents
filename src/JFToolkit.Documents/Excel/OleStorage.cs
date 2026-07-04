@@ -13,28 +13,42 @@ namespace JFToolkit.Documents.Excel;
 internal class OleStorage : IDisposable
 {
     // ── CFB constants ──
-    private const ulong Magic = 0xE11AB1A1E011CFD0;
     private const int HeaderSize = 512;
     private const int SectorSize = 512;
     private const int DirEntrySize = 128;
+    private const ulong Magic = 0xE11AB1A1E011CFD0;
     private const uint EndOfChain = 0xFFFFFFFE;
     private const uint FreeSector = 0xFFFFFFFF;
+    private const uint FatSector = 0xFFFFFFFD;
+    private const uint DifSector = 0xFFFFFFFC;
 
-    // Stream types
-    private const byte StgtyStream = 2;
+    // ── Directory entry types ──
+    private const byte StgtyEmpty = 0;
     private const byte StgtyStorage = 1;
+    private const byte StgtyStream = 2;
     private const byte StgtyRoot = 5;
 
-    // ── State ──
+    // ── Red-black tree colors ──
+    private const byte ColorRed = 0;
+    private const byte ColorBlack = 1;
+
+    private readonly Dictionary<string, OleStreamInfo> _streams = new();
     private readonly List<uint> _fat = new();
     private readonly List<DirectoryEntry> _dirEntries = new();
+
+    // Metadata streams required by ECMA-376 encrypted OLE2 containers.
+    // These tell Excel what kind of encryption the file uses.
+    public static readonly byte[] VersionStream = BuildVersionStream();
+    public static readonly byte[] DataSpaceMapStream = BuildDataSpaceMapStream();
+    public static readonly byte[] StrongEncryptionDataSpaceStream = BuildStrongEncryptionDataSpaceStream();
+    public static readonly byte[] PrimaryStream = BuildPrimaryStream();
 
     public void Dispose()
     {
     }
     public IReadOnlyDictionary<string, OleStreamInfo> Streams { get; }
 
-    private readonly Dictionary<string, OleStreamInfo> _streams = new();
+    // ── Public API ──
 
     /// <summary>
     /// Read an OLE2 compound file.
@@ -47,12 +61,49 @@ internal class OleStorage : IDisposable
     }
 
     /// <summary>
-    /// Write an OLE2 compound file with the given streams.
-    /// Each entry: (name, data bytes).
+    /// Write an OLE2 compound file with the given streams + ECMA-376 metadata.
     /// </summary>
-    public static void Write(Stream output, params (string Name, byte[] Data)[] streams)
+    public static void Write(Stream output, params (string Name, byte[] Data)[] userStreams)
     {
-        WriteInternal(output, streams);
+        // Build full stream list with required metadata
+        var allStreams = new List<(string Name, byte[] Data, byte Type, uint LeftSibling, uint RightSibling, uint ChildId)>();
+
+        // Root Entry (must be first)
+        allStreams.Add(("Root Entry", Array.Empty<byte>(), StgtyRoot, EndOfChain, EndOfChain, 0x00000001));
+
+        // EncryptedPackage (user data)
+        var encPkg = userStreams.FirstOrDefault(s => s.Name == "EncryptedPackage");
+        allStreams.Add(("EncryptedPackage", encPkg.Data, StgtyStream, EndOfChain, EndOfChain, EndOfChain));
+
+        // DataSpaces storage
+        allStreams.Add(("\x06DataSpaces", Array.Empty<byte>(), StgtyStorage, EndOfChain, EndOfChain, 0x00000003));
+
+        // Version stream (in DataSpaces)
+        allStreams.Add(("Version", VersionStream, StgtyStream, EndOfChain, EndOfChain, EndOfChain));
+
+        // DataSpaceMap stream
+        allStreams.Add(("DataSpaceMap", DataSpaceMapStream, StgtyStream, 0x00000003, 0x00000005, EndOfChain));
+
+        // DataSpaceInfo storage
+        allStreams.Add(("DataSpaceInfo", Array.Empty<byte>(), StgtyStorage, EndOfChain, EndOfChain, 0x00000006));
+
+        // StrongEncryptionDataSpace stream
+        allStreams.Add(("StrongEncryptionDataSpace", StrongEncryptionDataSpaceStream, StgtyStream, EndOfChain, EndOfChain, EndOfChain));
+
+        // TransformInfo storage
+        allStreams.Add(("TransformInfo", Array.Empty<byte>(), StgtyStorage, EndOfChain, EndOfChain, 0x00000008));
+
+        // StrongEncryptionTransform storage
+        allStreams.Add(("StrongEncryptionTransform", Array.Empty<byte>(), StgtyStorage, EndOfChain, EndOfChain, 0x00000009));
+
+        // Primary stream
+        allStreams.Add(("\x06Primary", PrimaryStream, StgtyStream, EndOfChain, EndOfChain, EndOfChain));
+
+        // EncryptionInfo (user data)
+        var encInfo = userStreams.FirstOrDefault(s => s.Name == "EncryptionInfo");
+        allStreams.Add(("EncryptionInfo", encInfo.Data, StgtyStream, 0x00000002, 0x00000001, EndOfChain));
+
+        WriteInternal(output, allStreams);
     }
 
     private OleStorage()
@@ -73,23 +124,11 @@ internal class OleStorage : IDisposable
         if (magic != Magic)
             throw new InvalidDataException("Not a valid OLE2 compound file.");
 
-        // Header fields (v3 layout)
-        // byte 22: minor version (0x3E = v3)
-        // byte 23: major version (3 or 4)
         var majorVersion = header[23];
         if (majorVersion != 3)
             throw new NotSupportedException(
                 $"OLE2 version {majorVersion} is not supported. Only v3 (512-byte sectors).");
 
-        // We only support v3 (512-byte sectors)
-        // OLE2 v3 header layout (correct offsets):
-        // byte 44-47: number of FAT sectors
-        // byte 48-51: first directory sector (SECID)
-        // byte 56-59: mini stream cutoff size
-        // byte 60-63: first mini FAT sector
-        // byte 64-67: number of mini FAT sectors
-        // byte 68-71: first DIFAT sector
-        // byte 72-75: number of DIFAT sectors
         var numFatSectors = BitConverter.ToUInt32(header, 44);
         var dirStartSector = BitConverter.ToUInt32(header, 48);
         var difatStart = BitConverter.ToUInt32(header, 68);
@@ -115,10 +154,10 @@ internal class OleStorage : IDisposable
                 if (val != FreeSector)
                     difat.Add(val);
             }
-            difatSector = BitConverter.ToUInt32(sectorBytes, 508); // last 4 bytes = next DIFAT
+            difatSector = BitConverter.ToUInt32(sectorBytes, 508);
         }
 
-        // Read FAT from DIFAT-referenced sectors
+        // Read FAT
         _fat.Clear();
         foreach (var fatSector in difat)
         {
@@ -147,22 +186,19 @@ internal class OleStorage : IDisposable
         for (int i = 0; i < numDirEntries; i++)
         {
             var offset = i * DirEntrySize;
-            var nameLength = BitConverter.ToUInt16(dirBytes.ToArray(), offset + 64); // should not be 0 for used entries
+            var nameLength = BitConverter.ToUInt16(dirBytes.ToArray(), offset + 64);
             if (nameLength == 0) continue;
 
             var name = System.Text.Encoding.Unicode.GetString(
                 dirBytes.ToArray(), offset, Math.Min((int)nameLength, 64));
-            // Name includes null terminator in length — trim
             name = name.TrimEnd('\0');
 
             var entryType = dirBytes[offset + 66];
             var startSector = BitConverter.ToUInt32(dirBytes.ToArray(), offset + 116);
             var streamSize = BitConverter.ToUInt32(dirBytes.ToArray(), offset + 120);
 
-            // First entry is root storage
             if (i == 0) continue;
 
-            // Only care about streams (not storages)
             if (entryType == StgtyStream && startSector != EndOfChain && streamSize > 0)
             {
                 _streams[name] = new OleStreamInfo(startSector, streamSize, file);
@@ -176,48 +212,41 @@ internal class OleStorage : IDisposable
     //  WRITING
     // ═══════════════════════════════════════════════
 
-    private static void WriteInternal(Stream output, (string Name, byte[] Data)[] streams)
+    private static void WriteInternal(Stream output,
+        List<(string Name, byte[] Data, byte Type, uint Left, uint Right, uint Child)> entries)
     {
-        // Pre-calculate layout
-        // For small files (< ~6.7 MB), a single FAT sector holds all chains
-        // We'll support up to 127 data sectors (64 KB per stream for a couple streams)
-        // which fits in one FAT + one DIFAT sector
+        // Collect only stream entries (non-storage) for sector allocation
+        var streamEntries = entries
+            .Select((e, i) => (Index: i, Entry: e))
+            .Where(x => x.Entry.Type == StgtyStream || x.Entry.Type == StgtyRoot)
+            .ToList();
 
-        var entries = streams.Select(s => new StreamWriteInfo(s.Name, s.Data)).ToList();
+        var dirEntryCount = entries.Count;
+        var dirSectorCount = (dirEntryCount + 3) / 4;
 
-        // Build directory: root + one entry per stream
-        // Directory entries per sector: 512 / 128 = 4
-        var dirEntryCount = 1 + entries.Count; // root + streams
-        var dirSectorCount = (dirEntryCount + 3) / 4; // ceiling division
-
-        // Assign sectors: header doesn't count as a sector.
-        // ReadSector uses (sector+1)*512, so sector 0 = first 512 bytes after header.
-        // Layout: sector 0 = FAT, sector 1+ = directory, then data
         var fatSectorCount = 1u;
-        var fatStart = 0u;                    // sector 0 = FAT
-        var dirSectors = Enumerable.Range(1, dirSectorCount)  // sector 1+ = directory
-            .Select(i => (uint)i).ToList();
-        var dataStart = (uint)(1 + dirSectorCount);  // data starts after directory
+        var dirSectors = Enumerable.Range(1, dirSectorCount).Select(i => (uint)i).ToList();
+        var dataStart = (uint)(1 + dirSectorCount);
 
         // Allocate data sectors for each stream
-        var streamAllocations = new List<(StreamWriteInfo Info, List<uint> Sectors)>();
-        foreach (var entry in entries)
+        var streamAllocations = new Dictionary<int, List<uint>>();
+        uint nextSector = dataStart;
+        foreach (var (idx, entry) in streamEntries)
         {
             var sectorsNeeded = (entry.Data.Length + SectorSize - 1) / SectorSize;
+            if (sectorsNeeded == 0) continue;
             var sectors = new List<uint>();
             for (int i = 0; i < sectorsNeeded; i++)
-                sectors.Add(dataStart + (uint)i);
-            dataStart += (uint)sectorsNeeded;
-            streamAllocations.Add((entry, sectors));
+                sectors.Add(nextSector + (uint)i);
+            nextSector += (uint)sectorsNeeded;
+            streamAllocations[idx] = sectors;
         }
 
         // Build FAT
-        var totalSectors = (int)dataStart;
+        var totalSectors = (int)nextSector;
         var fat = new uint[totalSectors];
         Array.Fill(fat, FreeSector);
-
-        // FAT sector itself (sector 0)
-        fat[0] = EndOfChain;
+        fat[0] = EndOfChain; // FAT sector
 
         // Directory sectors (chained)
         for (int i = 0; i < dirSectors.Count; i++)
@@ -227,7 +256,7 @@ internal class OleStorage : IDisposable
         }
 
         // Data sectors for each stream (chained)
-        foreach (var (info, sectors) in streamAllocations)
+        foreach (var (entryIdx, sectors) in streamAllocations)
         {
             for (int i = 0; i < sectors.Count; i++)
             {
@@ -235,35 +264,25 @@ internal class OleStorage : IDisposable
             }
         }
 
-        // Build DIFAT — point to our FAT sectors
-        var difat = new List<uint> { fatStart }; // just one FAT sector
+        var difat = new List<uint> { 0 }; // FAT at sector 0
 
         // Write header
         var header = new byte[HeaderSize];
         BitConverter.TryWriteBytes(header.AsSpan(0), Magic);
-        // CLSID: 16 bytes at offset 8 — all zeros
         header[22] = 0x3E; // minor version
-        header[23] = 3; // major version (v3)
-        // byte order: 0xFF 0xFE = little endian
-        header[24] = 0xFE;
-        header[25] = 0xFF;
-        // sector size exponent: 9 for 512 bytes
-        header[26] = 9;
-        // mini sector size exponent: 6 for 64 bytes
-        header[27] = 6;
-        // reserved (28-29): 0
-        // byte 28-43: reserved
-        BitConverter.TryWriteBytes(header.AsSpan(44), (uint)fatSectorCount);
-        BitConverter.TryWriteBytes(header.AsSpan(48), dirSectors[0]); // first directory sector
-        // byte 52-55: reserved (first mini FAT sector for mini streams — not used)
+        header[23] = 3;    // major version
+        header[24] = 0xFE; header[25] = 0xFF; // little endian
+        header[26] = 9;    // sector size = 512
+        header[27] = 6;    // mini sector size = 64
+        BitConverter.TryWriteBytes(header.AsSpan(44), fatSectorCount);
+        BitConverter.TryWriteBytes(header.AsSpan(48), dirSectors[0]);
         BitConverter.TryWriteBytes(header.AsSpan(52), EndOfChain);
-        BitConverter.TryWriteBytes(header.AsSpan(56), 4096u); // mini stream cutoff size
+        BitConverter.TryWriteBytes(header.AsSpan(56), 4096u); // mini stream cutoff
         BitConverter.TryWriteBytes(header.AsSpan(60), EndOfChain); // first mini FAT
-        BitConverter.TryWriteBytes(header.AsSpan(64), 0u); // number of mini FAT sectors
-        BitConverter.TryWriteBytes(header.AsSpan(68), EndOfChain); // no DIFAT (all in header)
-        BitConverter.TryWriteBytes(header.AsSpan(72), 0u); // number of DIFAT sectors
+        BitConverter.TryWriteBytes(header.AsSpan(64), 0u);        // mini FAT sectors
+        BitConverter.TryWriteBytes(header.AsSpan(68), EndOfChain); // no DIFAT chain
+        BitConverter.TryWriteBytes(header.AsSpan(72), 0u);        // DIFAT sectors
 
-        // DIFAT entries (offset 76, 109 entries)
         for (int i = 0; i < 109; i++)
         {
             var val = i < difat.Count ? difat[i] : FreeSector;
@@ -272,73 +291,59 @@ internal class OleStorage : IDisposable
 
         output.Write(header, 0, HeaderSize);
 
-        // Write FAT sector(s)
+        // Write FAT
         var fatBytes = new byte[SectorSize];
         for (int i = 0; i < Math.Min(fat.Length, 128); i++)
-        {
             BitConverter.TryWriteBytes(fatBytes.AsSpan(i * 4), fat[i]);
-        }
         output.Write(fatBytes, 0, SectorSize);
 
-        // Write directory sectors
+        // Write directory
         var dirBytes = new byte[dirSectorCount * SectorSize];
-
-        // Root entry (index 0)
-        WriteDirectoryEntry(dirBytes, 0, "Root Entry", StgtyRoot, EndOfChain, 0);
-
-        // Stream entries
         for (int i = 0; i < entries.Count; i++)
         {
-            var sectors = streamAllocations[i].Sectors;
-            var startSector = sectors.Count > 0 ? sectors[0] : EndOfChain;
-            WriteDirectoryEntry(dirBytes, (i + 1) * DirEntrySize,
-                entries[i].Name, StgtyStream, startSector, entries[i].Data.Length);
+            var e = entries[i];
+            uint startSector = streamAllocations.TryGetValue(i, out var secs) && secs.Count > 0
+                ? secs[0] : EndOfChain;
+            WriteDirectoryEntry(dirBytes, i * DirEntrySize,
+                e.Name, e.Type, e.Left, e.Right, e.Child, startSector, e.Data.Length);
         }
-
         output.Write(dirBytes, 0, dirBytes.Length);
 
         // Write data sectors
-        foreach (var (info, sectors) in streamAllocations)
+        foreach (var (idx, sectors) in streamAllocations)
         {
+            var data = entries[idx].Data;
             for (int i = 0; i < sectors.Count; i++)
             {
-                var offset = i * SectorSize;
-                var remaining = info.Data.Length - offset;
+                var off = i * SectorSize;
+                var remaining = data.Length - off;
                 var chunkSize = Math.Min(remaining, SectorSize);
-                output.Write(info.Data, offset, chunkSize);
-                // Pad sector
-                var padding = new byte[SectorSize - chunkSize];
-                output.Write(padding, 0, padding.Length);
+                output.Write(data, off, chunkSize);
+                if (chunkSize < SectorSize)
+                    output.Write(new byte[SectorSize - chunkSize], 0, SectorSize - chunkSize);
             }
         }
     }
 
     private static void WriteDirectoryEntry(byte[] buffer, int offset, string name,
-        byte entryType, uint startSector, int streamSize)
+        byte entryType, uint leftSibling, uint rightSibling, uint childId,
+        uint startSector, int streamSize)
     {
-        // Name (UTF-16LE, max 32 chars = 64 bytes including null terminator)
         var utf16Name = System.Text.Encoding.Unicode.GetBytes(name + '\0');
         if (utf16Name.Length > 64)
             throw new ArgumentException($"Stream name too long: {name}");
         Array.Copy(utf16Name, 0, buffer, offset, utf16Name.Length);
-        // Name length (bytes including terminator)
         BitConverter.TryWriteBytes(buffer.AsSpan(offset + 64), (ushort)utf16Name.Length);
-        // Entry type
         buffer[offset + 66] = entryType;
-        // Node color: 1 = black (root), 0 = red (others)
-        buffer[offset + 67] = (byte)(entryType == StgtyRoot ? 1 : 0);
-        // Left sibling DIF, Right sibling DIF, child DIF: all 0xFFFFFFFF
-        BitConverter.TryWriteBytes(buffer.AsSpan(offset + 68), 0xFFFFFFFFu);
-        BitConverter.TryWriteBytes(buffer.AsSpan(offset + 72), 0xFFFFFFFFu);
-        BitConverter.TryWriteBytes(buffer.AsSpan(offset + 76), 0xFFFFFFFFu);
-        // CLSID (16 bytes at offset 80) — all zeros
-        // State bits (4 bytes at 96)
-        // Created/modified timestamps (8+8 bytes at 100, 108)
-        // Start sector
+        buffer[offset + 67] = (byte)(entryType == StgtyRoot ? ColorBlack : ColorRed);
+        BitConverter.TryWriteBytes(buffer.AsSpan(offset + 68), leftSibling);
+        BitConverter.TryWriteBytes(buffer.AsSpan(offset + 72), rightSibling);
+        BitConverter.TryWriteBytes(buffer.AsSpan(offset + 76), childId);
+        // CLSID (16 bytes) — zeros
+        // State bits (4 bytes) — zeros
+        // Created/modified (8+8 bytes) — zeros
         BitConverter.TryWriteBytes(buffer.AsSpan(offset + 116), startSector);
-        // Stream size (low 32 bits)
         BitConverter.TryWriteBytes(buffer.AsSpan(offset + 120), (uint)streamSize);
-        // Stream size (high 32 bits)
         BitConverter.TryWriteBytes(buffer.AsSpan(offset + 124), 0u);
     }
 
@@ -365,9 +370,6 @@ internal class OleStorage : IDisposable
         }
     }
 
-    /// <summary>
-    /// Read the full content of a named stream.
-    /// </summary>
     public byte[] ReadStream(string name)
     {
         if (!_streams.TryGetValue(name, out var info))
@@ -397,6 +399,84 @@ internal class OleStorage : IDisposable
         return result;
     }
 
+    // ── Metadata stream builders ──
+
+    private static byte[] BuildVersionStream()
+    {
+        // \x3c\x00\x00\x00 = 60 bytes follow
+        // "Microsoft.Container.DataSpaces" in UTF-16LE + version info
+        var name = "Microsoft.Container.DataSpaces";
+        var nameBytes = System.Text.Encoding.Unicode.GetBytes(name);
+        var result = new byte[4 + nameBytes.Length + 12];
+        BitConverter.TryWriteBytes(result.AsSpan(0), nameBytes.Length + 12);
+        Buffer.BlockCopy(nameBytes, 0, result, 4, nameBytes.Length);
+        // Version bytes: 01 00 00 00 01 00 00 00 01 00 00 00
+        result[4 + nameBytes.Length + 0] = 1;
+        result[4 + nameBytes.Length + 4] = 1;
+        result[4 + nameBytes.Length + 8] = 1;
+        return result;
+    }
+
+    private static byte[] BuildDataSpaceMapStream()
+    {
+        // Maps "EncryptedPackage" → "StrongEncryptionDataSpace"
+        var header = new byte[] {
+            0x08, 0x00, 0x00, 0x00, // 8 bytes follow?
+            0x01, 0x00, 0x00, 0x00, // 1 entry
+            0x68, 0x00, 0x00, 0x00, // ref length
+            0x01, 0x00, 0x00, 0x00, // ?
+            0x00, 0x00, 0x00, 0x00, // ?
+            0x20, 0x00, 0x00, 0x00, // name length?
+        };
+        var entry1 = System.Text.Encoding.Unicode.GetBytes("EncryptedPackage");
+        var entry2 = System.Text.Encoding.Unicode.GetBytes("StrongEncryptionDataSpace");
+        var result = new byte[header.Length + entry1.Length + 2 + entry2.Length + 2];
+        Buffer.BlockCopy(header, 0, result, 0, header.Length);
+        Buffer.BlockCopy(entry1, 0, result, header.Length, entry1.Length);
+        Buffer.BlockCopy(entry2, 0, result, header.Length + entry1.Length + 2, entry2.Length);
+        return result;
+    }
+
+    private static byte[] BuildStrongEncryptionDataSpaceStream()
+    {
+        var header = new byte[] {
+            0x08, 0x00, 0x00, 0x00,
+            0x01, 0x00, 0x00, 0x00,
+            0x32, 0x00, 0x00, 0x00,
+        };
+        var transform = System.Text.Encoding.Unicode.GetBytes("StrongEncryptionTransform");
+        var result = new byte[header.Length + transform.Length + 2];
+        Buffer.BlockCopy(header, 0, result, 0, header.Length);
+        Buffer.BlockCopy(transform, 0, result, header.Length, transform.Length);
+        return result;
+    }
+
+    private static byte[] BuildPrimaryStream()
+    {
+        // CLSID + "Microsoft.Container.EncryptionTransform" + flags
+        var guid = Guid.Parse("FF9A3F03-56EF-4613-BDD5-5A41C1D07246");
+        var guidBytes = guid.ToByteArray();
+        var name = "Microsoft.Container.EncryptionTransform";
+        var nameBytes = System.Text.Encoding.Unicode.GetBytes(name);
+        
+        var result = new byte[4 + guidBytes.Length + 4 + nameBytes.Length + 8];
+        var offset = 0;
+        // Size prefix for GUID section
+        BitConverter.TryWriteBytes(result.AsSpan(offset), guidBytes.Length + 4);
+        offset += 4;
+        Buffer.BlockCopy(guidBytes, 0, result, offset, guidBytes.Length);
+        offset += guidBytes.Length;
+        BitConverter.TryWriteBytes(result.AsSpan(offset), nameBytes.Length);
+        offset += 4;
+        Buffer.BlockCopy(nameBytes, 0, result, offset, nameBytes.Length);
+        offset += nameBytes.Length;
+        // Flags: 01 00 00 00 01 00 00 00
+        result[offset + 0] = 1;
+        result[offset + 4] = 1;
+        
+        return result;
+    }
+
     // ── Inner types ──
 
     internal sealed class OleStreamInfo
@@ -415,9 +495,4 @@ internal class OleStorage : IDisposable
 
     private sealed record DirectoryEntry(
         string Name, byte EntryType, uint StartSector, uint StreamSize);
-
-    private sealed record StreamWriteInfo(string Name, byte[] Data);
-
-    // These are needed for DIFAT reading but we use List<uint> which doesn't need explicit methods
-    // (removed unused private helper methods)
 }
