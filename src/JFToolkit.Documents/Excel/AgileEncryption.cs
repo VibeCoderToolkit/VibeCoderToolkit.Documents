@@ -418,7 +418,7 @@ internal static class AgileEncryption
         byte[] encryptedKeyValue, byte[] encryptedVerifier, byte[] encryptedVerifierHash,
         byte[] encryptedHmacKey, byte[] encryptedHmacValue)
     {
-        var ns = "http://schemas.microsoft.com/office/2006/encryption";
+        XNamespace ns = "http://schemas.microsoft.com/office/2006/encryption";
 
         var doc = new XElement(ns + "encryption",
             new XElement(ns + "keyData",

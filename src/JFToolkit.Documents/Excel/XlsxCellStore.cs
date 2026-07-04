@@ -245,11 +245,13 @@ internal class XlsxCellStore
             // Copy unmodified entries
             foreach (var (name, data) in _zipEntries)
             {
-                // Skip entries we'll regenerate
+                // Skip sheet entries that have been modified — we'll write new versions below
                 if (name.StartsWith("xl/worksheets/sheet") && name.EndsWith(".xml"))
                 {
-                    // We'll write modified versions below
-                    continue;
+                    var sheetName = _sheets.Values
+                        .FirstOrDefault(s => s.XmlFilePath == name)?.Name;
+                    if (sheetName != null && _sheets.TryGetValue(sheetName, out var s) && s.IsModified)
+                        continue;
                 }
                 if (name == "xl/sharedStrings.xml" && _stringsModified)
                     continue;

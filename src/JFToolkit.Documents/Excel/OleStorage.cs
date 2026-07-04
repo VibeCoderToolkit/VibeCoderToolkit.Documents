@@ -82,16 +82,17 @@ internal class OleStorage : IDisposable
                 $"OLE2 version {majorVersion} is not supported. Only v3 (512-byte sectors).");
 
         // We only support v3 (512-byte sectors)
-        // byte 30-33: number of FAT sectors
-        var numFatSectors = BitConverter.ToUInt32(header, 28);
-        // byte 32-35: first directory sector
-        var dirStartSector = BitConverter.ToUInt32(header, 30);
-        // byte 44-47: first DIFAT sector
-        var difatStart = BitConverter.ToUInt32(header, 40);
-        // byte 48-51: first mini FAT sector
-        // byte 52-55: number of mini FAT sectors
-        // byte 56-59: first DIFAT sector (redundant with 44-47)
-        // byte 60-63: number of DIFAT sectors
+        // OLE2 v3 header layout (correct offsets):
+        // byte 44-47: number of FAT sectors
+        // byte 48-51: first directory sector (SECID)
+        // byte 56-59: mini stream cutoff size
+        // byte 60-63: first mini FAT sector
+        // byte 64-67: number of mini FAT sectors
+        // byte 68-71: first DIFAT sector
+        // byte 72-75: number of DIFAT sectors
+        var numFatSectors = BitConverter.ToUInt32(header, 44);
+        var dirStartSector = BitConverter.ToUInt32(header, 48);
+        var difatStart = BitConverter.ToUInt32(header, 68);
 
         // Read 109 initial DIFAT entries from header (offset 76)
         var difat = new List<uint>();
@@ -189,13 +190,14 @@ internal class OleStorage : IDisposable
         var dirEntryCount = 1 + entries.Count; // root + streams
         var dirSectorCount = (dirEntryCount + 3) / 4; // ceiling division
 
-        // Assign sectors: header(0), FAT(count?), directory(...), data(...)
-        var headerSector = 0u; // header doesn't consume a FAT sector
-        var fatSectorCount = 1u; // one FAT sector gives us 128 entries
-        var fatStart = 1u;
-        var dirSectors = Enumerable.Range((int)fatStart + (int)fatSectorCount, dirSectorCount)
+        // Assign sectors: header doesn't count as a sector.
+        // ReadSector uses (sector+1)*512, so sector 0 = first 512 bytes after header.
+        // Layout: sector 0 = FAT, sector 1+ = directory, then data
+        var fatSectorCount = 1u;
+        var fatStart = 0u;                    // sector 0 = FAT
+        var dirSectors = Enumerable.Range(1, dirSectorCount)  // sector 1+ = directory
             .Select(i => (uint)i).ToList();
-        var dataStart = (uint)(fatStart + fatSectorCount + dirSectorCount);
+        var dataStart = (uint)(1 + dirSectorCount);  // data starts after directory
 
         // Allocate data sectors for each stream
         var streamAllocations = new List<(StreamWriteInfo Info, List<uint> Sectors)>();
@@ -214,10 +216,8 @@ internal class OleStorage : IDisposable
         var fat = new uint[totalSectors];
         Array.Fill(fat, FreeSector);
 
-        // Header sector (index 0) — not tracked in FAT
-        // FAT sector(s)
-        fat[0] = EndOfChain; // not used (header)
-        fat[1] = EndOfChain; // FAT sector — end of chain
+        // FAT sector itself (sector 0)
+        fat[0] = EndOfChain;
 
         // Directory sectors (chained)
         for (int i = 0; i < dirSectors.Count; i++)
@@ -252,21 +252,16 @@ internal class OleStorage : IDisposable
         // mini sector size exponent: 6 for 64 bytes
         header[27] = 6;
         // reserved (28-29): 0
-        BitConverter.TryWriteBytes(header.AsSpan(28), (uint)fatSectorCount);
-        BitConverter.TryWriteBytes(header.AsSpan(30), dirSectors[0]); // first directory sector
-        // byte 32-35: transaction signature number
-        // byte 36-39: mini stream cutoff size (4096)
-        BitConverter.TryWriteBytes(header.AsSpan(36), 4096u);
-        BitConverter.TryWriteBytes(header.AsSpan(40), dirSectors[0]); // first mini FAT sector (reuse?)
-        // Actually: byte 40 = first mini FAT sector (we don't use mini streams)
-        // byte 44 = first DIFAT sector (0 if none)
-        // byte 48-51 = number of DIFAT sectors
-        // byte 52-55 = number of mini FAT sectors
-        // We'll set them all to 0/EndOfChain as needed
-        BitConverter.TryWriteBytes(header.AsSpan(40), EndOfChain); // no mini FAT
-        BitConverter.TryWriteBytes(header.AsSpan(44), EndOfChain); // no DIFAT (all in header)
-        BitConverter.TryWriteBytes(header.AsSpan(48), 0u); // number of DIFAT sectors
-        BitConverter.TryWriteBytes(header.AsSpan(52), 0u); // number of mini FAT sectors
+        // byte 28-43: reserved
+        BitConverter.TryWriteBytes(header.AsSpan(44), (uint)fatSectorCount);
+        BitConverter.TryWriteBytes(header.AsSpan(48), dirSectors[0]); // first directory sector
+        // byte 52-55: reserved (first mini FAT sector for mini streams — not used)
+        BitConverter.TryWriteBytes(header.AsSpan(52), EndOfChain);
+        BitConverter.TryWriteBytes(header.AsSpan(56), 4096u); // mini stream cutoff size
+        BitConverter.TryWriteBytes(header.AsSpan(60), EndOfChain); // first mini FAT
+        BitConverter.TryWriteBytes(header.AsSpan(64), 0u); // number of mini FAT sectors
+        BitConverter.TryWriteBytes(header.AsSpan(68), EndOfChain); // no DIFAT (all in header)
+        BitConverter.TryWriteBytes(header.AsSpan(72), 0u); // number of DIFAT sectors
 
         // DIFAT entries (offset 76, 109 entries)
         for (int i = 0; i < 109; i++)
