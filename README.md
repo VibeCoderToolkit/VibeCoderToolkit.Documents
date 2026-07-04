@@ -75,6 +75,10 @@ This package uses **only built-in .NET APIs**. No NuGet references, no COM inter
 - CSV: `StreamReader`/`StreamWriter` with proper RFC 4180 quoting
 - JSON: `System.Text.Json`
 
+## Contributing
+
+Solved an edge case that kept sending your AI in loops? [Contribute →](CONTRIBUTING.md)
+
 ## License
 
 MIT
