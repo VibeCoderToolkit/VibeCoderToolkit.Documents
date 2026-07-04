@@ -1,0 +1,27 @@
+name: Publish to NuGet
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+*'
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - run: dotnet test tests/VibeCoderToolkit.Documents.Tests/VibeCoderToolkit.Documents.Tests.csproj -c Release
+
+      - run: dotnet pack src/VibeCoderToolkit.Documents/VibeCoderToolkit.Documents.csproj -c Release -o ./nupkg
+
+      - run: dotnet nuget push ./nupkg/*.nupkg --source https://api.nuget.org/v3/index.json --api-key keyless
