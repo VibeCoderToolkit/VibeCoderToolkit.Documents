@@ -158,7 +158,7 @@ internal static class AgileEncryption
         using var aes = Aes.Create();
         aes.Key = key;
         aes.Mode = CipherMode.CBC;
-        aes.Padding = PaddingMode.None;
+        aes.Padding = PaddingMode.PKCS7;
         aes.IV = iv;
 
         using var encryptor = aes.CreateEncryptor();
@@ -170,7 +170,7 @@ internal static class AgileEncryption
         using var aes = Aes.Create();
         aes.Key = key;
         aes.Mode = CipherMode.CBC;
-        aes.Padding = PaddingMode.None;
+        aes.Padding = PaddingMode.PKCS7;
         aes.IV = iv;
 
         using var decryptor = aes.CreateDecryptor();
@@ -267,31 +267,38 @@ internal static class AgileEncryption
 
     private static byte[] RecoverDataKey(EncryptionInfoData info, string password)
     {
-        // Derive password hash using the password node's salt
-        var passwordHash = DerivePasswordHash(password, info.PasswordSalt, info.SpinCount);
+        try
+        {
+            // Derive password hash using the password node's salt
+            var passwordHash = DerivePasswordHash(password, info.PasswordSalt, info.SpinCount);
 
-        // Derive keys
-        var verifierKey = DeriveBlockKey(passwordHash, VerifierHashInputBlockKey);
-        var hashKey = DeriveBlockKey(passwordHash, VerifierHashValueBlockKey);
+            // Derive keys
+            var verifierKey = DeriveBlockKey(passwordHash, VerifierHashInputBlockKey);
+            var hashKey = DeriveBlockKey(passwordHash, VerifierHashValueBlockKey);
 
-        // Verify password: decrypt verifier, hash it, compare with decrypted hash
-        var decryptedVerifier = AesCbcDecrypt(info.EncryptedVerifierHashInput, verifierKey, info.PasswordSalt);
-        var expectedHash = SHA512.HashData(decryptedVerifier);  // hash the decrypted bytes directly (may have padding)
-        var actualHash = AesCbcDecrypt(info.EncryptedVerifierHashValue, hashKey, info.PasswordSalt);
+            // Verify password: decrypt verifier, hash it, compare with decrypted hash
+            var decryptedVerifier = AesCbcDecrypt(info.EncryptedVerifierHashInput, verifierKey, info.PasswordSalt);
+            var expectedHash = SHA512.HashData(decryptedVerifier);
+            var actualHash = AesCbcDecrypt(info.EncryptedVerifierHashValue, hashKey, info.PasswordSalt);
 
-        // Truncate to original hash size
-        if (!CryptographicOperations.FixedTimeEquals(
-            expectedHash.AsSpan(0, HashSize),
-            actualHash.AsSpan(0, HashSize)))
+            // Truncate to original hash size
+            if (!CryptographicOperations.FixedTimeEquals(
+                expectedHash.AsSpan(0, HashSize),
+                actualHash.AsSpan(0, HashSize)))
+                throw new InvalidOperationException("Wrong password.");
+
+            // Derive key encryption key and recover data key
+            var keyValueKey = DeriveBlockKey(passwordHash, EncryptedKeyValueBlockKey);
+            var paddedKey = AesCbcDecrypt(info.EncryptedKeyValue, keyValueKey, info.PasswordSalt);
+            var dataKey = new byte[KeyBytes];
+            Buffer.BlockCopy(paddedKey, 0, dataKey, 0, KeyBytes);
+
+            return dataKey;
+        }
+        catch (CryptographicException)
+        {
             throw new InvalidOperationException("Wrong password.");
-
-        // Derive key encryption key and recover data key
-        var keyValueKey = DeriveBlockKey(passwordHash, EncryptedKeyValueBlockKey);
-        var paddedKey = AesCbcDecrypt(info.EncryptedKeyValue, keyValueKey, info.PasswordSalt);
-        var dataKey = new byte[KeyBytes];
-        Buffer.BlockCopy(paddedKey, 0, dataKey, 0, KeyBytes);
-
-        return dataKey;
+        }
     }
 
     private static byte[] DecryptPackage(byte[] encryptedPackage, byte[] key, byte[] keyDataSalt)
