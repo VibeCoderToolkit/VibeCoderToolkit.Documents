@@ -16,10 +16,12 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '9.0.x'
+      
+      - run: dotnet restore
 
-      - run: dotnet test tests/VibeCoderToolkit.Documents.Tests/VibeCoderToolkit.Documents.Tests.csproj -c Release
+      - run: dotnet test tests/VibeCoderToolkit.Documents.Tests/VibeCoderToolkit.Documents.Tests.csproj -c Release --no-restore
 
-      - run: dotnet pack src/VibeCoderToolkit.Documents/VibeCoderToolkit.Documents.csproj -c Release -o ./nupkg
+      - run: dotnet pack src/VibeCoderToolkit.Documents/VibeCoderToolkit.Documents.csproj -c Release -o ./nupkg --no-restore
 
       - name: Push to NuGet
         env:
