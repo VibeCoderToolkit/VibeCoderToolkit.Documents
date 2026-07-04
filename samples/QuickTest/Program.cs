@@ -48,11 +48,11 @@ Check(xlsxRead.Count == 3, "Skriv og les 3 rader");
 Check(xlsxRead[0].Name == "Tastatur", "Første rad — navn");
 Check(xlsxRead[2].Pris == 2499m, "Tredje rad — pris");
 
-// ──── Vis Excel-fil ────
+// ──── Vis Excel-fil (ikkje slett — bruker kan opne og inspisere) ────
 Console.WriteLine($"📂 Excel-fil: {xlsxPath}");
 
-// ──── Cleanup ────
-try { Directory.Delete(testDir, true); } catch { }
+// ──── Cleanup (behald Excel-fila for inspeksjon) ────
+try { File.Delete(csvPath); File.Delete(jsonPath); } catch { }
 
 Console.WriteLine($"\n━━━ {passed}/{passed + failed} testar bestått ━━━");
 if (failed > 0)
