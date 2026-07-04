@@ -16,12 +16,10 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '9.0.x'
-      
-      - run: dotnet restore
 
-      - run: dotnet test tests/VibeCoderToolkit.Documents.Tests/VibeCoderToolkit.Documents.Tests.csproj -c Release --no-restore
+      - run: dotnet test tests/VibeCoderToolkit.Documents.Tests/VibeCoderToolkit.Documents.Tests.csproj -c Release
 
-      - run: dotnet pack src/VibeCoderToolkit.Documents/VibeCoderToolkit.Documents.csproj -c Release -o ./nupkg --no-restore
+      - run: dotnet pack src/VibeCoderToolkit.Documents/VibeCoderToolkit.Documents.csproj -c Release -o ./nupkg
 
       - name: Push to NuGet
         env:
@@ -30,8 +28,7 @@ jobs:
           for pkg in ./nupkg/*.nupkg; do
             echo "Pushing $(basename $pkg)..."
             STATUS=*** -s -o /dev/null -w "%{http_code}" \
-              -X PUT \
-              -H "X-NuGet-ApiKey: *** \
+              -X PUT -H "X-NuGet-ApiKey: *** \
               --data-binary "@$pkg" \
               "https://www.nuget.org/api/v2/package/")
             echo "HTTP $STATUS"
