@@ -12,14 +12,14 @@ void Check(bool cond, string msg)
     else { failed++; Console.WriteLine($"  ❌ {msg}"); }
 }
 
-Console.WriteLine("🔬 VibeCoderToolkit.Documents — verifiseringstest\n");
+Console.WriteLine("🔬 VibeCoderToolkit.Documents — verification test\n");
 
 // ──── Data ────
 var products = new List<Product>
 {
-    new() { Name = "Tastatur", Pris = 899.50m, Antall = 12 },
-    new() { Name = "Mus", Pris = 349m, Antall = 45 },
-    new() { Name = "Skjerm", Pris = 2499m, Antall = 3 },
+    new() { Name = "Keyboard", Price = 899.50m, Stock = 12 },
+    new() { Name = "Mouse", Price = 349m, Stock = 45 },
+    new() { Name = "Monitor", Price = 2499m, Stock = 3 },
 };
 
 // ──── CSV ────
@@ -27,110 +27,110 @@ Console.WriteLine("📄 CSV:");
 var csvPath = Path.Combine(testDir, "test.csv");
 DocumentWriter.Write(csvPath, products);
 var csvRead = DocumentReader.Read<Product>(csvPath);
-Check(csvRead.Count == 3, "Skriv og les 3 rader");
-Check(csvRead[0].Name == "Tastatur", "Første rad — navn");
-Check(csvRead[1].Pris == 349m, "Andre rad — pris");
-Check(csvRead[2].Antall == 3, "Tredje rad — antall");
+Check(csvRead.Count == 3, "Write and read 3 rows");
+Check(csvRead[0].Name == "Keyboard", "First row — name");
+Check(csvRead[1].Price == 349m, "Second row — price");
+Check(csvRead[2].Stock == 3, "Third row — stock");
 
 // ──── JSON ────
 Console.WriteLine("📄 JSON:");
 var jsonPath = Path.Combine(testDir, "test.json");
 DocumentWriter.Write(jsonPath, products);
 var jsonRead = DocumentReader.Read<Product>(jsonPath);
-Check(jsonRead.Count == 3, "Skriv og les 3 rader");
-Check(jsonRead[0].Name == "Tastatur", "Første rad — navn");
+Check(jsonRead.Count == 3, "Write and read 3 rows");
+Check(jsonRead[0].Name == "Keyboard", "First row — name");
 
-// ──── Excel (ukryptert) ────
-Console.WriteLine("📄 Excel (ukryptert):");
+// ──── Excel (unencrypted) ────
+Console.WriteLine("📄 Excel (unencrypted):");
 var xlsxPath = Path.Combine(testDir, "test.xlsx");
 DocumentWriter.Write(xlsxPath, products);
 var xlsxRead = DocumentReader.Read<Product>(xlsxPath);
-Check(xlsxRead.Count == 3, "Skriv og les 3 rader");
-Check(xlsxRead[0].Name == "Tastatur", "Første rad — navn");
-Check(xlsxRead[2].Pris == 2499m, "Tredje rad — pris");
+Check(xlsxRead.Count == 3, "Write and read 3 rows");
+Check(xlsxRead[0].Name == "Keyboard", "First row — name");
+Check(xlsxRead[2].Price == 2499m, "Third row — price");
 
-// ──── Excel (kryptert med passord) ────
-Console.WriteLine("📄 Excel (kryptert, passord: \"hemmelig\"):");
-var encPath = Path.Combine(testDir, "kryptert.xlsx");
+// ──── Excel (encrypted with password) ────
+Console.WriteLine("📄 Excel (encrypted, password: \"secret\"):");
+var encPath = Path.Combine(testDir, "encrypted.xlsx");
 
-// Skriv kryptert: opne ukryptert → lagre med passord
+// Write encrypted: open unencrypted → save with password
 using (var doc = EncryptedExcelDocument.Open(xlsxPath))
 {
-    doc.SaveAs(encPath, "hemmelig");
+    doc.SaveAs(encPath, "secret");
 }
-Check(EncryptedExcelDocument.IsEncrypted(encPath), "Fila er kryptert (OLE2-format)");
+Check(EncryptedExcelDocument.IsEncrypted(encPath), "File is encrypted (OLE2 format)");
 
-// Prøv å lese UTAN passord → skal kaste feil
+// Try to read WITHOUT password → should throw
 try
 {
     EncryptedExcelDocument.Open(encPath);
-    Check(false, "Opna kryptert fil utan passord — skulle kasta feil");
+    Check(false, "Opened encrypted file without password — should have thrown");
 }
 catch (InvalidOperationException)
 {
-    Check(true, "Opna utan passord → InvalidOperationException (som forventa)");
+    Check(true, "Open without password → InvalidOperationException (as expected)");
 }
 
-// Prøv å lese med FEIL passord → skal kaste feil
+// Try to read with WRONG password → should throw
 try
 {
-    EncryptedExcelDocument.Open(encPath, "feilpassord");
-    Check(false, "Opna med feil passord — skulle kasta feil");
+    EncryptedExcelDocument.Open(encPath, "wrongpassword");
+    Check(false, "Opened with wrong password — should have thrown");
 }
 catch (Exception)
 {
-    Check(true, "Opna med feil passord → feil (som forventa)");
+    Check(true, "Open with wrong password → error (as expected)");
 }
 
-// Les med RIKTIG passord → skal fungere
-using (var encDoc = EncryptedExcelDocument.Open(encPath, "hemmelig"))
+// Read with CORRECT password → should work
+using (var encDoc = EncryptedExcelDocument.Open(encPath, "secret"))
 {
     var names = encDoc.GetSheetNames();
-    Check(names.Length >= 1, $"Har {names.Length} ark");
+    Check(names.Length >= 1, $"Has {names.Length} sheet(s)");
 
     var val = encDoc.GetCellValue(names[0], 2, 1)?.ToString();
-    Check(val == "Tastatur", $"Rad 2, col 1 = '{val}' (forventa 'Tastatur')");
+    Check(val == "Keyboard", $"Row 2, col 1 = '{val}' (expected 'Keyboard')");
 
-    var pris = encDoc.GetCellValue(names[0], 3, 2);
-    Check(Convert.ToDecimal(pris) == 349m, $"Rad 3, col 2 = {pris} (forventa 349)");
+    var price = encDoc.GetCellValue(names[0], 3, 2);
+    Check(Convert.ToDecimal(price) == 349m, $"Row 3, col 2 = {price} (expected 349)");
 
-    // Endre ei celle og lagre på nytt med nytt passord
+    // Modify a cell and resave with a new password
     encDoc.SetCellValue(names[0], 2, 3, 999);
-    encDoc.SaveAs(encPath, "nyttpassord");
+    encDoc.SaveAs(encPath, "newpassword");
 }
-Check(EncryptedExcelDocument.IsEncrypted(encPath), "Fila framleis kryptert etter endring");
+Check(EncryptedExcelDocument.IsEncrypted(encPath), "File still encrypted after modification");
 
-// Les tilbake med nytt passord
-using (var reopened = EncryptedExcelDocument.Open(encPath, "nyttpassord"))
+// Reopen with new password
+using (var reopened = EncryptedExcelDocument.Open(encPath, "newpassword"))
 {
     var sheet = reopened.GetSheetNames()[0];
-    var endret = reopened.GetCellValue(sheet, 2, 3);
-    Check(Convert.ToInt32(endret) == 999, $"Endra celle = {endret} (forventa 999)");
+    var modified = reopened.GetCellValue(sheet, 2, 3);
+    Check(Convert.ToInt32(modified) == 999, $"Modified cell = {modified} (expected 999)");
 
-    var uendra = reopened.GetCellValue(sheet, 1, 2)?.ToString();
-    Check(uendra == "Pris", $"Uendra overskrift = '{uendra}' (forventa 'Pris')");
+    var unchanged = reopened.GetCellValue(sheet, 1, 2)?.ToString();
+    Check(unchanged == "Price", $"Unchanged header = '{unchanged}' (expected 'Price')");
 }
 
-Console.WriteLine($"📂 Ukryptert: {xlsxPath}");
-Console.WriteLine($"📂 Kryptert:  {encPath}");
+Console.WriteLine($"📂 Unencrypted: {xlsxPath}");
+Console.WriteLine($"📂 Encrypted:  {encPath}");
 
-// ──── Cleanup (behald Excel-filene for inspeksjon) ────
+// ──── Cleanup (keep Excel files for inspection) ────
 try { File.Delete(csvPath); File.Delete(jsonPath); } catch { }
 
-Console.WriteLine($"\n━━━ {passed}/{passed + failed} testar bestått ━━━");
+Console.WriteLine($"\n━━━ {passed}/{passed + failed} tests passed ━━━");
 if (failed > 0)
 {
-    Console.WriteLine("❌ Nokre testar feila!");
+    Console.WriteLine("❌ Some tests failed!");
     Environment.Exit(1);
 }
 else
 {
-    Console.WriteLine("🎉 Alt fungerer!");
+    Console.WriteLine("🎉 All tests pass!");
 }
 
 public class Product
 {
     public string Name { get; set; } = "";
-    public decimal Pris { get; set; }
-    public int Antall { get; set; }
+    public decimal Price { get; set; }
+    public int Stock { get; set; }
 }
