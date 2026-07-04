@@ -21,19 +21,4 @@ jobs:
 
       - run: dotnet pack src/VibeCoderToolkit.Documents/VibeCoderToolkit.Documents.csproj -c Release -o ./nupkg
 
-      - name: Push to NuGet
-        env:
-          KEY: ${{ secrets.NUGET_API_KEY }}
-        run: |
-          for pkg in ./nupkg/*.nupkg; do
-            echo "Pushing $(basename $pkg)..."
-            STATUS=*** -s -o /dev/null -w "%{http_code}" \
-              -X PUT -H "X-NuGet-ApiKey: *** \
-              --data-binary "@$pkg" \
-              "https://www.nuget.org/api/v2/package/")
-            echo "HTTP $STATUS"
-            if [ "$STATUS" != "201" ] && [ "$STATUS" != "409" ]; then
-              echo "FAILED"
-              exit 1
-            fi
-          done
+      - run: dotnet nuget push ./nupkg/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
