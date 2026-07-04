@@ -66,7 +66,7 @@ public class JsonReaderWriterTests
 
     private static string GetTempPath(string name)
     {
-        var dir = Path.Combine(Path.GetTempPath(), "jftoolkit_tests");
+        var dir = Path.Combine(Path.GetTempPath(), "vibecoder_tests");
         Directory.CreateDirectory(dir);
         return Path.Combine(dir, name);
     }

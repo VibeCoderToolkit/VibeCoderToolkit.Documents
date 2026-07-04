@@ -8,7 +8,7 @@ var sampleData = new List<Product>
     new() { Name = "Doohickey", Price = 3.75m, Stock = 200 },
 };
 
-var testDir = Path.Combine(Path.GetTempPath(), "jftoolkit_demo");
+var testDir = Path.Combine(Path.GetTempPath(), "vibecoder_demo");
 Directory.CreateDirectory(testDir);
 
 int passed = 0;

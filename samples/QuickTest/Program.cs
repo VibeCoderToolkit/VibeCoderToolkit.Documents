@@ -1,7 +1,7 @@
 using VibeCoderToolkit.Documents;
 using VibeCoderToolkit.Documents.Excel;
 
-var testDir = Path.Combine(Path.GetTempPath(), "jftoolkit_verify");
+var testDir = Path.Combine(Path.GetTempPath(), "vibecoder_verify");
 Directory.CreateDirectory(testDir);
 
 int passed = 0, failed = 0;
@@ -12,7 +12,7 @@ void Check(bool cond, string msg)
     else { failed++; Console.WriteLine($"  ❌ {msg}"); }
 }
 
-Console.WriteLine("🔬 JFToolkit.Documents — verifiseringstest\n");
+Console.WriteLine("🔬 VibeCoderToolkit.Documents — verifiseringstest\n");
 
 // ──── Data ────
 var products = new List<Product>
