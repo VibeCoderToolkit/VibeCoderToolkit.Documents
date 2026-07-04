@@ -9,9 +9,6 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
 
     steps:
       - uses: actions/checkout@v4
@@ -24,7 +21,20 @@ jobs:
 
       - run: dotnet pack src/VibeCoderToolkit.Documents/VibeCoderToolkit.Documents.csproj -c Release -o ./nupkg
 
-      - name: Get OIDC token and push
+      - name: Push to NuGet
+        env:
+          KEY: ${{ secrets.NUGET_API_KEY }}
         run: |
-          OIDC_TOKEN=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=api://AzureADTokenExchange" | jq -r .value)
-          dotnet nuget push ./nupkg/*.nupkg --source https://api.nuget.org/v3/index.json --api-key "$OIDC_TOKEN" --skip-duplicate
+          for pkg in ./nupkg/*.nupkg; do
+            echo "Pushing $(basename $pkg)..."
+            STATUS=*** -s -o /dev/null -w "%{http_code}" \
+              -X PUT \
+              -H "X-NuGet-ApiKey: *** \
+              --data-binary "@$pkg" \
+              "https://www.nuget.org/api/v2/package/")
+            echo "HTTP $STATUS"
+            if [ "$STATUS" != "201" ] && [ "$STATUS" != "409" ]; then
+              echo "FAILED"
+              exit 1
+            fi
+          done
