@@ -22,6 +22,4 @@ jobs:
       - run: dotnet pack src/VibeCoderToolkit.Documents/VibeCoderToolkit.Documents.csproj -c Release -o ./nupkg
 
       - name: Push to NuGet
-        env:
-          NUGET_AUTH_TOKEN: ${{ secrets.NUGET_API_KEY }}
-        run: dotnet nuget push ./nupkg/*.nupkg --source https://api.nuget.org/v3/index.json --skip-duplicate
+        run: dotnet nuget push ./nupkg/*.nupkg --source https://api.nuget.org/v3/index.json --api-key ${{ secrets.NUGET_API_KEY }} --skip-duplicate
